@@ -1,68 +1,123 @@
-
-import uuid
-import streamlit as st
-import pickle
-import os
 import time
-import json
-from streamlit import session_state
-from chatmarker.constants import CHATMARKER_VERSION
+import flet as ft
 
-st.set_page_config(
-    page_title='问答数据集生成器',
-    layout="wide",
-    page_icon='🥳',
-    initial_sidebar_state="expanded", #“auto”或“expanded”或“collapsed”
-         menu_items={
-         'Get Help': None,
-         'Report a bug': None,
-         'About': None
-     }
-)
+from typing import List, TypedDict
 
-def build_chat_area(placeholder, form_id: str, messages):
-    with placeholder.form(form_id, True):
-        for message in messages:
-            message_dom = st.text_area(label=f"{message['role']}: ",
-                                    value=message['content'],
-                            height=100,
-                            max_chars=2048,
-                            placeholder="支持使用 Markdown 格式书写")
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-        with col1:
-            btn_previous = st.form_submit_button("上一个对话", use_container_width=True)
-        with col2:
-            btn_del = st.form_submit_button("删除", use_container_width=True)
-        with col3:
-            btn_save = st.form_submit_button("保存", use_container_width=True)
-        with col4:
-            btn_next = st.form_submit_button("下一个对话", use_container_width=True, type="primary")
-        
-        st.balloons()
-        print(btn_next)
-        if btn_next:
-            placeholder.empty()
-            st.session_state.index = st.session_state.index + 1
-    return btn_previous, btn_del, btn_save, btn_next
+class ChatMessage(TypedDict):
+    role: str
+    content: str
 
-def main():
-    with open("dataset.json", "r", encoding="utf-8") as f:
-        dataset = json.loads(f.read())
+def ui_chat_message(message: ChatMessage):
+    role = message["role"]
+    content = message["content"]
+
+    if role == "user":
+        avatar = ft.CircleAvatar(
+            foreground_image_url="https://avatars.githubusercontent.com/u/1551736?s=80&v=4",
+            tooltip="user",
+        )
+    elif role == "assistant":
+        avatar = ft.CircleAvatar(
+            foreground_image_url="https://avatars.githubusercontent.com/u/14957082?s=48&v=4",
+            tooltip="assistant",
+        )
+    else:
+        avatar = ft.CircleAvatar(
+            foreground_image_url="https://avatars.githubusercontent.com/u/1693078?s=80&v=4",
+            tooltip="system",
+        )
+    text = ft.TextField(label="Standard", multiline=True, min_lines=1, max_lines=7, value=content, expand=True)
+    chat_line = ft.Row([avatar, text])
+    return chat_line
+
+def ui_chat_view(page: ft.Page, messages: List[ChatMessage]):
+    chat_view = ft.ListView(expand=True, spacing=10, auto_scroll=False, padding=5)
+    for i, message in enumerate(messages):
+        chat_view.controls.append(ui_chat_message(message))
     
-    if 'index' not in st.session_state:
-        st.session_state.index = 0
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
+    return chat_view
+
+def ui_topbar(page: ft.Page):
+    content = ft.Row([
+        ft.ElevatedButton("Open"),
+        ft.ElevatedButton("Download")
+    ])
+    topbar = ft.Container(
+        content=content,
+        bgcolor=ft.colors.YELLOW,
+        padding=5,
+    )
+    return topbar
+
+def ui_midarea(page: ft.Page):
+    chat_view = ui_chat_view(page, messages)
+    content = ft.Row([chat_view], expand=True)
+    midarea = ft.Container(
+        content=content,
+        padding=5,
+        expand=True
+    )
+    return midarea
+
+def ui_bottombar(page: ft.Page):
+    content = ft.Row([
+        ft.ElevatedButton("Previous"),
+        ft.ElevatedButton("Next")
+    ])
+    bottombar = ft.Container(
+        content=content,
+        bgcolor=ft.colors.WHITE,
+        padding=0,
+    )
+    return bottombar
+
+from test_data import messages
+
+def main(page: ft.Page):
+    page.title = "ChatMarker"
+    page.vertical_alignment = "top"
+
+    def page_resize(e):
+        print("New page size:", page.window_width, page.window_height)
+
+    page.on_resize = page_resize
+
+    def check_item_clicked(e):
+        e.control.checked = not e.control.checked
+        page.update()
+
+    page.appbar = ft.AppBar(
+        leading=ft.Icon(ft.icons.PALETTE),
+        leading_width=40,
+        title=ft.Text("ChatMarker"),
+        center_title=False,
+        bgcolor=ft.colors.SURFACE_VARIANT,
+        actions=[
+            ft.IconButton(ft.icons.WB_SUNNY_OUTLINED),
+            ft.IconButton(ft.icons.FILTER_3),
+            ft.PopupMenuButton(
+                items=[
+                    ft.PopupMenuItem(text="Item 1"),
+                    ft.PopupMenuItem(),  # divider
+                    ft.PopupMenuItem(
+                        text="Checked item", checked=False, on_click=check_item_clicked
+                    ),
+                ]
+            ),
+        ],
+    )
+
+    # file picker
+    file_picker = ft.FilePicker()
+    page.overlay.append(file_picker)
+    page.update()
+
+    # views
+    mid_area = ui_midarea(page)
+    bottombar = ui_bottombar(page)
     
-    st.title(f"ChatMarker {CHATMARKER_VERSION}")
-    PROMPT=st.sidebar.text_input("提示词", value= "请给出以下问题的答案：")
+    main_column = ft.Column([mid_area, bottombar], expand=True)
+    
+    page.add(main_column)
 
-    md_dom = st.markdown(f"> 对话数据 - {st.session_state.index}")
-
-    data = dataset[st.session_state.index]
-    messages = data["messages"]
-    placeholder = st.empty()
-    btn_previous, btn_del, btn_save, btn_next = build_chat_area(placeholder, str(uuid.uuid4()), messages)
-
-if __name__ == "__main__":
-    main()
+ft.app(target=main)
